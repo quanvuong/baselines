@@ -7,6 +7,9 @@ import dr
 import numpy as np
 import random
 
+import gym
+gym.logger.set_level(40)
+
 
 def set_global_seeds(i):
     tf.set_random_seed(i)
