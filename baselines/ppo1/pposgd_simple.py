@@ -8,7 +8,25 @@ from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
 from collections import deque
 
-def traj_segment_generator(pi, env, horizon, stochastic):
+def traj_segment_generator(pi, env_dist, collision_detector, horizon, stochastic):
+    '''
+    It is tricky to set the seed of the sampled env in this function.
+
+    We would like to set the seed of the sampled env to be able to reproduce result exactly.
+    However, if the seed is the same for all sampled envs, then when the stddev of env_dist is set to 0,
+    then we would always sample the same initial state for all episodes.
+
+    Thus, we set seed of the env sampled before training to be 0 and
+    set the seed to be t every time we sample a new environment, where t is the number of training timestep so far.
+
+    This ensures that we can set seed for reproducibility without
+    having degenerate behavior in the corner case of stddev==0.0
+    '''
+
+    env = env_dist.sample()
+    env_dist.backend.set_collision_detector(env, collision_detector)
+    env.seed(0)
+
     t = 0
     ac = env.action_space.sample() # not used, just so we have the datatype
     new = True # marks if we're on first timestep of an episode
@@ -58,6 +76,12 @@ def traj_segment_generator(pi, env, horizon, stochastic):
             ep_lens.append(cur_ep_len)
             cur_ep_ret = 0
             cur_ep_len = 0
+
+            env.close()
+            env = env_dist.sample()
+            env_dist.backend.set_collision_detector(env, collision_detector)
+            env.seed(t)
+
             ob = env.reset()
         t += 1
 
@@ -77,7 +101,7 @@ def add_vtarg_and_adv(seg, gamma, lam):
         gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
     seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
-def learn(env, policy_fn, *,
+def learn(env_dist, collision_detector, policy_fn, *,
         timesteps_per_actorbatch, # timesteps per actor per update
         clip_param, entcoeff, # clipping parameter epsilon, entropy coeff
         optim_epochs, optim_stepsize, optim_batchsize,# optimization hypers
@@ -89,6 +113,11 @@ def learn(env, policy_fn, *,
         ):
     # Setup losses and stuff
     # ----------------------------------------
+
+    # Sample an env just so that we can obtain the attribute that comes
+    # along with an env instance
+    env = env_dist.sample()
+
     ob_space = env.observation_space
     ac_space = env.action_space
     pi = policy_fn("pi", ob_space, ac_space) # Construct network for new policy
@@ -129,7 +158,7 @@ def learn(env, policy_fn, *,
 
     # Prepare for rollouts
     # ----------------------------------------
-    seg_gen = traj_segment_generator(pi, env, timesteps_per_actorbatch, stochastic=True)
+    seg_gen = traj_segment_generator(pi, env_dist, collision_detector, timesteps_per_actorbatch, stochastic=True)
 
     episodes_so_far = 0
     timesteps_so_far = 0
