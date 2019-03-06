@@ -7,6 +7,8 @@ from baselines.common.mpi_adam import MpiAdam
 from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
 from collections import deque
+import tensorboardX
+from datetime import datetime
 
 
 def evaluate_policy(pi, eval_envs):
@@ -135,7 +137,8 @@ def learn(env_dist, collision_detector, policy_fn, *,
         callback=None, # you can do anything in the callback, since it takes locals(), globals()
         adam_epsilon=1e-5,
         schedule='constant', # annealing for stepsize parameters (epsilon and adam),
-        eval_freq=5e3 # how often to evaluate policy perf
+        eval_freq=5e3, # how often to evaluate policy perf
+        viz_logdir=f"runs/{datetime.now().strftime('%b%d_%H-%M-%S')}"
         ):
     # Setup losses and stuff
     # ----------------------------------------
@@ -194,6 +197,8 @@ def learn(env_dist, collision_detector, policy_fn, *,
     tstart = time.time()
     lenbuffer = deque(maxlen=100) # rolling buffer for episode lengths
     rewbuffer = deque(maxlen=100) # rolling buffer for episode rewards
+
+    writer = tensorboardX.SummaryWriter(log_dir=viz_logdir)
 
     assert sum([max_iters>0, max_timesteps>0, max_episodes>0, max_seconds>0])==1, "Only one time constraint permitted"
 
@@ -271,7 +276,11 @@ def learn(env_dist, collision_detector, policy_fn, *,
             timesteps_since_eval %= eval_freq
 
             eval_perf = evaluate_policy(pi, eval_envs)
+
             logger.record_tabular("EvalPerf", eval_perf)
+            writer.add_scalar('EvalPerf', eval_perf, timesteps_so_far)
+
+        writer.add_scalar('EpRewMean', np.mean(rewbuffer), timesteps_so_far)
 
         if MPI.COMM_WORLD.Get_rank()==0:
             logger.dump_tabular()
