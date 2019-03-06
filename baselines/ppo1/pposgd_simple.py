@@ -147,7 +147,9 @@ def learn(env_dist, collision_detector, policy_fn, *,
     # Sample an env just so that we can obtain the attribute that comes
     # along with an env instance
     env = env_dist.sample()
+
     eval_envs = [env_dist.backend.make(env_dist.env_name) for _ in range(100)]
+    [env_dist.backend.set_collision_detector(e, collision_detector) for e in eval_envs]
 
     ob_space = env.observation_space
     ac_space = env.action_space
