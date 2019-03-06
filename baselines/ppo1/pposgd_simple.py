@@ -26,9 +26,10 @@ def evaluate_policy(pi, eval_envs):
     while not all(done):
         actions, _ = pi.act_batch(stochastic=False, obs=obs)
         for i, (env, action) in enumerate(zip(eval_envs, actions)):
-            obs[i], r, d, _ = env.step(action)
-            avg_reward[i] += 0 if done[i] else r
-            done[i] = d
+            if not done[i]:
+                obs[i], r, d, _ = env.step(action)
+                avg_reward[i] += r
+                done[i] = d
 
     avg_reward = np.mean(avg_reward)
 
