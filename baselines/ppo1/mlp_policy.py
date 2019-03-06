@@ -52,6 +52,11 @@ class MlpPolicy(object):
     def act(self, stochastic, ob):
         ac1, vpred1 =  self._act(stochastic, ob[None])
         return ac1[0], vpred1[0]
+
+    def act_batch(self, stochastic, obs):
+        acs, vpreds = self._act(stochastic, obs)
+        return acs, vpreds
+
     def get_variables(self):
         return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)
     def get_trainable_variables(self):

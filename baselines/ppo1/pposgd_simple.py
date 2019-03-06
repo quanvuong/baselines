@@ -8,6 +8,31 @@ from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
 from collections import deque
 
+
+def evaluate_policy(pi, eval_envs):
+
+    num_envs = len(eval_envs)
+
+    for i, env in enumerate(eval_envs):
+        env.seed(i)
+
+    done = np.array([False] * num_envs)
+    avg_reward = np.array([0.] * num_envs)
+
+    obs = np.stack([env.reset() for env in eval_envs])
+
+    while not all(done):
+        actions, _ = pi.act_batch(stochastic=False, obs=obs)
+        for i, (env, action) in enumerate(zip(eval_envs, actions)):
+            obs[i], r, d, _ = env.step(action)
+            avg_reward[i] += 0 if done[i] else r
+            done[i] = d
+
+    avg_reward = np.mean(avg_reward)
+
+    return avg_reward
+
+
 def traj_segment_generator(pi, env_dist, collision_detector, horizon, stochastic):
     '''
     It is tricky to set the seed of the sampled env in this function.
@@ -109,7 +134,8 @@ def learn(env_dist, collision_detector, policy_fn, *,
         max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
         callback=None, # you can do anything in the callback, since it takes locals(), globals()
         adam_epsilon=1e-5,
-        schedule='constant' # annealing for stepsize parameters (epsilon and adam)
+        schedule='constant', # annealing for stepsize parameters (epsilon and adam),
+        eval_freq=5e3 # how often to evaluate policy perf
         ):
     # Setup losses and stuff
     # ----------------------------------------
@@ -117,6 +143,7 @@ def learn(env_dist, collision_detector, policy_fn, *,
     # Sample an env just so that we can obtain the attribute that comes
     # along with an env instance
     env = env_dist.sample()
+    eval_envs = [env_dist.backend.make(env_dist.env_name) for _ in range(100)]
 
     ob_space = env.observation_space
     ac_space = env.action_space
@@ -163,6 +190,7 @@ def learn(env_dist, collision_detector, policy_fn, *,
     episodes_so_far = 0
     timesteps_so_far = 0
     iters_so_far = 0
+    timesteps_since_eval = 0
     tstart = time.time()
     lenbuffer = deque(maxlen=100) # rolling buffer for episode lengths
     rewbuffer = deque(maxlen=100) # rolling buffer for episode rewards
@@ -233,10 +261,18 @@ def learn(env_dist, collision_detector, policy_fn, *,
         logger.record_tabular("EpThisIter", len(lens))
         episodes_so_far += len(lens)
         timesteps_so_far += sum(lens)
+        timesteps_since_eval += sum(lens)
         iters_so_far += 1
         logger.record_tabular("EpisodesSoFar", episodes_so_far)
         logger.record_tabular("TimestepsSoFar", timesteps_so_far)
         logger.record_tabular("TimeElapsed", time.time() - tstart)
+
+        if timesteps_since_eval >= eval_freq:
+            timesteps_since_eval %= eval_freq
+
+            eval_perf = evaluate_policy(pi, eval_envs)
+            logger.record_tabular("EvalPerf", eval_perf)
+
         if MPI.COMM_WORLD.Get_rank()==0:
             logger.dump_tabular()
 
