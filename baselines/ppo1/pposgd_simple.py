@@ -138,7 +138,7 @@ def learn(env_dist, collision_detector, policy_fn, *,
         callback=None, # you can do anything in the callback, since it takes locals(), globals()
         adam_epsilon=1e-5,
         schedule='constant', # annealing for stepsize parameters (epsilon and adam),
-        eval_freq=5e3, # how often to evaluate policy perf
+        eval_freq=10e3, # how often to evaluate policy perf
         viz_logdir=f"runs/{datetime.now().strftime('%b%d_%H-%M-%S')}"
         ):
     # Setup losses and stuff
