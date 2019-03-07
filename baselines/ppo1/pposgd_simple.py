@@ -200,6 +200,7 @@ def learn(env_dist, collision_detector, policy_fn, *,
     tstart = time.time()
     lenbuffer = deque(maxlen=100) # rolling buffer for episode lengths
     rewbuffer = deque(maxlen=100) # rolling buffer for episode rewards
+    eval_perfs = []
 
     writer = tensorboardX.SummaryWriter(log_dir=viz_logdir)
 
@@ -279,6 +280,7 @@ def learn(env_dist, collision_detector, policy_fn, *,
             timesteps_since_eval %= eval_freq
 
             eval_perf = evaluate_policy(pi, eval_envs)
+            eval_perfs.append(eval_perf)
 
             logger.record_tabular("EvalPerf", eval_perf)
             writer.add_scalar('EvalPerf', eval_perf, timesteps_so_far)
@@ -288,7 +290,8 @@ def learn(env_dist, collision_detector, policy_fn, *,
         if MPI.COMM_WORLD.Get_rank()==0:
             logger.dump_tabular()
 
-    return pi
+    return pi, eval_perfs
+
 
 def flatten_lists(listoflists):
     return [el for list_ in listoflists for el in list_]
